@@ -9,6 +9,16 @@
 
 #include <stdio.h>
 #include <tchar.h>
+#include <string.h>
+#include <stdlib.h>
+#ifdef linux  
+#include <unistd.h>  
+#include <dirent.h>  
+#endif  
+#ifdef WIN32  
+#include <direct.h>  
+#include <io.h>  
+#endif 
 
 
 
