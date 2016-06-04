@@ -145,10 +145,16 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="cmemory.h" />
+    <ClInclude Include="conf.h" />
+    <ClInclude Include="mapreduce.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="cmemory.cpp" />
+    <ClCompile Include="conf.cpp" />
+    <ClCompile Include="mapreduce.cpp" />
     <ClCompile Include="SpillAlgorithm.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
