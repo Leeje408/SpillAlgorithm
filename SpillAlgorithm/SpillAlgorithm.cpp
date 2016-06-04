@@ -5,6 +5,85 @@
 
 //全局变量
 cMemory *cm;
+bool is_spill = false;
+//int e_i = 0;
+
+//////////////////////////////////////////////////////////////////////////
+struct coupleCharP
+{
+	char *sp;
+	char *ep;
+};
+
+bool isInArray_s(char check, char sets[])
+{
+	while (sets != NULL && strlen(sets) != 0)
+	{
+		if (check == *sets)
+		{
+			return true;
+		}
+		sets++;
+	}
+	return false;
+}
+
+//按空格拆分
+coupleCharP split(char *source, char split_char[])
+{
+	char *sp = NULL, *ep = NULL;
+	while (source != NULL && strlen(source) != 0)
+	{
+		if (!isInArray_s(*source, split_char))
+		{
+			sp = sp ? sp : source;
+		}
+		else
+		{
+			ep = sp ? source : ep;
+		}
+		if (sp != NULL && ep != NULL)
+		{
+			break;
+		}
+		source++;
+	}
+	return{ sp,ep };
+}
+
+//自定义map方法
+mapLink *oMap(myMap *raw_map)
+{
+	mapLink *head = NULL, *p = NULL, *tmp;
+	myMap *t;
+	coupleCharP char_p;
+	char *tp = raw_map->key, split_sign[10] = { ' ','<','>','"','.',',' ,'=','(',')' };
+	//拆分入参为小段文本
+	while (tp != NULL && strlen(tp) != 0)
+	{
+		char_p = split(tp, split_sign);
+		if (char_p.sp == NULL)
+		{
+			break;
+		}
+		t = (myMap *)malloc(sizeof(myMap));
+		int len = char_p.ep ? (char_p.ep - char_p.sp) : strlen(char_p.sp);
+		strncpy(t->key, char_p.sp, len);
+		t->key[len] = '\0';
+		strcpy(t->value, "1");
+		tmp = (mapLink *)malloc(sizeof(mapLink));
+		tmp->my_map = t;
+		tmp->next = NULL;
+		if (p)	p->next = tmp;
+		head = head ? head : tmp;
+		p = tmp;
+		tp = char_p.ep;
+	}
+	return head;
+}
+//////////////////////////////////////////////////////////////////////////
+
+
 
 //函数声明
 float spillPercentage();
@@ -16,6 +95,8 @@ unsigned int __stdcall spill();
 int main(int argc, char *argv[])
 {
 	HANDLE 	handle;
+	SYSTEMTIME start_t, end_t;
+	GetSystemTime(&start_t);
 	bool is_argv = false;
 	if (is_argv && argc < 3)
 	{
@@ -26,10 +107,15 @@ int main(int argc, char *argv[])
 	initConf();
 	setInPath("E:/test");
 	setOutPath("E:/test");
-	setSpillPath("E:/test");
+	setSpillPath("E:/test/spill");
+	setAdjustSpill(true);
+	setUMP(&oMap);
 	handle = (HANDLE)_beginthreadex(NULL, 0, (_beginthreadex_proc_type)leeMap, NULL, 0, NULL);
 	WaitForSingleObject(handle, INFINITE);
 	cleanCM();
+	GetSystemTime(&end_t);
+	int dif_t = 1000 * (end_t.wSecond - start_t.wSecond) + end_t.wMilliseconds - start_t.wMilliseconds;
+	fprintf(stderr, "程序运行时间：%d毫秒\n", dif_t);
 	return 0;
 }
 
@@ -40,14 +126,16 @@ float spillPercentage()
 {
 	int map_rate = getMapTime(),
 		spill_rate = getSpillTime();
+	fprintf(stderr, "map_rate__%d\tspill_rate__%d\n", map_rate, spill_rate);
 	//校验速率是否为0 是则返回初始设置/上一次设置
 	if (!map_rate || !spill_rate)
 	{
 		return getSpillPercent();
 	}
-	float n_per = map_rate / (map_rate + spill_rate);
-	float per = n_per > 0.5f ? n_per : 0.5f;
-	fprintf(stderr, "[INFO]调整后的溢出比为：%3.2f", per);
+	float n_per = (float)map_rate / (float)(map_rate + spill_rate);
+	fprintf(stderr, "n_per:%d\n",n_per);
+	float per = n_per > 0.5f ? (n_per > 0.9f ? 0.9f : n_per) : 0.51f;
+	fprintf(stderr, "[INFO]调整后的溢出比为：%5.4f\n", per);
 	setSpillPercent(per);
 	return per;
 }
@@ -70,7 +158,7 @@ unsigned int __stdcall leeMap()
 	//spill句柄
 	HANDLE spill_handle;
 	//时间变量
-	time_t start_time, end_time;
+	SYSTEMTIME start_time, end_time;
 	//获取溢出量
 	int spill_size = getSpillSize();
 
@@ -124,7 +212,8 @@ unsigned int __stdcall leeMap()
 	strcat(path, "*");
 	if ((fl = _findfirst(path, &fd)) == -1)
 	{
-		fprintf(stderr, "[ERROR]Path:%s not found", path);
+		fprintf(stderr, "[ERROR]Path:%s not found\n", path);
+		exit(1);
 	}
 	else
 	{
@@ -183,7 +272,7 @@ unsigned int __stdcall leeMap()
 	//按行读取，每个结果写环形内存（线程） 释放已处理文件
 	p = head;
 	//记录首次map开始时间
-	time(&start_time);
+	GetSystemTime(&start_time);
 	while (p != NULL)
 	{
 		fp = fopen(p->path, "r");
@@ -204,7 +293,16 @@ unsigned int __stdcall leeMap()
 			{
 				continue;
 			}
+			//除去字符串末尾换行符
+			if (strstr(inmap.key + strlen(inmap.key) - 2,"\n") != NULL)
+			{
+				inmap.key[strlen(inmap.key) - 1] = '\0';
+			}
 			head_map_link = map_link = (*u_map)(&inmap);
+			if (head_map_link == NULL)
+			{
+				continue;
+			}
 			//开始写环形内存 循环写入
 			while (map_link != NULL)
 			{
@@ -212,10 +310,14 @@ unsigned int __stdcall leeMap()
 				if (is_spill == spill_size)
 				{
 					//记录map时间
-					time(&end_time);
-					fprintf(stderr, "[INFO]map时间：%d秒\n", end_time - start_time);
-					recordMapTime(end_time - start_time);
-					start_time = end_time;
+					GetSystemTime(&end_time);
+					int dif_time = 1000 * (end_time.wSecond - start_time.wSecond) + end_time.wMilliseconds - start_time.wMilliseconds;
+					fprintf(stderr, "[INFO]map时间：%d毫秒\n", dif_time);
+					recordMapTime(dif_time);
+					if (is_spill)
+					{
+						WaitForSingleObject(spill_handle, INFINITE);
+					}
 					spill_handle = (HANDLE)_beginthreadex(NULL, 0, (_beginthreadex_proc_type)spill, NULL, 0, NULL);
 					//重新计算溢出比
 					if (getAdjustSpill())
@@ -223,6 +325,7 @@ unsigned int __stdcall leeMap()
 						spillPercentage();
 						spill_size = getSpillSize();
 					}
+					start_time = end_time;
 				}
 				if (is_spill == -1)
 				{
@@ -239,6 +342,7 @@ unsigned int __stdcall leeMap()
 		p = p->next;
 		fclose(fp);
 	}
+	WaitForSingleObject(spill_handle, INFINITE);
 	//把环形内存中数据 写入support文件
 	strcpy(head->path, getSpillPath());
 	strcat(head->path, "support");
@@ -263,6 +367,8 @@ unsigned int __stdcall leeMap()
 //spill 过程
 unsigned int __stdcall spill()
 {
+	//更改spill标识
+	is_spill = true;
 	fprintf(stderr, "[INFO]spill开始\n");
 	//新建临时spill指针
 	myMap *sp = cm->cm_read;
@@ -270,15 +376,15 @@ unsigned int __stdcall spill()
 	FILE *fp;
 	char name[128] = "", tmp[12] = "";
 	//记录spill的时间，并作为缓存文件名
-	time_t now, end_time;
-	time(&now);
-	sprintf(name, "%sspill_%d", getSpillPath(), now);
+	SYSTEMTIME now, end_time;
+	GetSystemTime(&now);
+	sprintf(name, "%sspill_%d", getSpillPath(), 1000 * now.wSecond + now.wMilliseconds);
 	//写缓存文件
 	if ((fp = fopen(name, "w")) == NULL)
 	{
 		//打开文件出错，终止程序
 		fprintf(stderr, "[ERROR]打开文件：\"%s\"出错\n", name);
-		return 1;
+		exit(1);
 	}
 	//当spill与read之差为溢出量，则结束
 	int spill_size = getSpillSize();
@@ -293,9 +399,11 @@ unsigned int __stdcall spill()
 	cm->is_empty = sp - cm->cm_read > 0 ? cm->is_empty : (!cm->is_empty);
 	cm->cm_read = sp;
 	fprintf(stderr, "[Spill]write:%x\t read:%x\n", cm->cm_write, cm->cm_read);
-	time(&end_time);
-	printf("[INFO]spill耗时为：%d秒\n", end_time - now);
+	GetSystemTime(&end_time);
+	int dif_time = 1000 * (end_time.wSecond - now.wSecond) + end_time.wMilliseconds - now.wMilliseconds;
+	printf("[INFO]spill耗时为：%d毫秒\n", dif_time);
 	//设置spill时间
-	recordSpillTime(end_time - now);
+	recordSpillTime(dif_time);
+	is_spill = false;
 	return 0;
 }

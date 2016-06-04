@@ -45,6 +45,7 @@ int freeMapLink(mapLink *head)
 		return 0;
 	}
 	mapLink *p = head->next;
+	free(head->my_map);
 	free(head);
 	freeMapLink(p);
 	return 0;
@@ -54,8 +55,12 @@ int freeMapLink(mapLink *head)
 mapLink* dmp(myMap *mp)
 {
 	mapLink *mpl;
+	myMap *t;
+	t = (myMap *)malloc(sizeof(myMap));
 	mpl = (mapLink *)malloc(sizeof(mapLink));
-	mpl->my_map = mp;
+	strcpy(t->key, mp->key);
+	strcpy(t->value, mp->value);
+	mpl->my_map = t;
 	mpl->next = NULL;
 	return mpl;
 }
