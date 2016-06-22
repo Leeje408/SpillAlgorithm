@@ -8,6 +8,7 @@ int cout = 0;
 //init circulating memory
 cMemory *setCM(int total)
 {
+	setCMSize(total);
 	//取整数个myMap
 	int num = (total * 1024 * 1024) / sizeof(myMap);
 	cmhead = (myMap *)malloc(num * sizeof(myMap));

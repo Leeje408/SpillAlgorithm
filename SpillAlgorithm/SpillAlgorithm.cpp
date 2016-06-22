@@ -6,7 +6,7 @@
 //全局变量
 cMemory *cm;
 bool is_spill = false;
-//int e_i = 0;
+float last_per = 0;
 
 //////////////////////////////////////////////////////////////////////////
 struct coupleCharP
@@ -87,6 +87,7 @@ mapLink *oMap(myMap *raw_map)
 
 //函数声明
 float spillPercentage();
+float newSpillPercentage();
 unsigned int __stdcall leeMap();
 unsigned int __stdcall spill();
 
@@ -109,7 +110,7 @@ int main(int argc, char *argv[])
 	setOutPath("E:/test");
 	setSpillPath("E:/test/spill");
 	setAdjustSpill(true);
-	setUMP(&oMap);
+	//setUMP(&oMap);
 	handle = (HANDLE)_beginthreadex(NULL, 0, (_beginthreadex_proc_type)leeMap, NULL, 0, NULL);
 	WaitForSingleObject(handle, INFINITE);
 	cleanCM();
@@ -133,12 +134,36 @@ float spillPercentage()
 		return getSpillPercent();
 	}
 	float n_per = (float)map_rate / (float)(map_rate + spill_rate);
-	fprintf(stderr, "n_per:%d\n",n_per);
+	fprintf(stderr, "n_per:%5.4f\n",n_per);
 	float per = n_per > 0.5f ? (n_per > 0.9f ? 0.9f : n_per) : 0.51f;
 	fprintf(stderr, "[INFO]调整后的溢出比为：%5.4f\n", per);
 	setSpillPercent(per);
 	return per;
 }
+//新内存优化算法
+float newSpillPercentage()
+{
+	int map_rate = getMapTime(),
+		spill_rate = getSpillTime();
+	fprintf(stderr, "map_rate__%d\tspill_rate__%d\n", map_rate, spill_rate);
+	//校验速率是否为0 是则返回初始设置/上一次设置
+	if (!map_rate || !spill_rate)
+	{
+		return getSpillPercent();
+	}
+	float n_per = (float)map_rate / (float)(map_rate + spill_rate);
+	fprintf(stderr, "n_per:%5.4f\n", n_per);
+	float per = n_per > 0.5f ? (n_per > 0.9f ? 0.9f : n_per) : 0.51f;
+	if (last_per != 0)
+	{
+		per = (last_per*per) + (1.0 - last_per)*last_per;
+	}
+	fprintf(stderr, "[INFO]调整后的溢出比为：%5.4f\n", per);
+	setSpillPercent(per);
+	last_per = per;
+	return per;
+}
+
 
 /*
 	map
@@ -322,7 +347,8 @@ unsigned int __stdcall leeMap()
 					//重新计算溢出比
 					if (getAdjustSpill())
 					{
-						spillPercentage();
+						//spillPercentage();
+						newSpillPercentage();
 						spill_size = getSpillSize();
 					}
 					start_time = end_time;
